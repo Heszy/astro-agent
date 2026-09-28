@@ -1,0 +1,2 @@
+"""AstroAgent application package."""
+

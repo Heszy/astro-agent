@@ -1,0 +1,11 @@
+.venv/
+.venv-test/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.env
+*.pyc
+data/*.csv
+results/*.csv
+results/*.png
+!.gitkeep

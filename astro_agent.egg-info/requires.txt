@@ -1,0 +1,12 @@
+fastapi<1,>=0.115
+uvicorn[standard]<1,>=0.30
+pandas<3,>=2.2
+numpy<3,>=2.0
+scipy<2,>=1.13
+matplotlib<4,>=3.9
+openai<3,>=1.68
+pydantic-settings<3,>=2.5
+httpx<1,>=0.27
+
+[dev]
+pytest<9,>=8.3
