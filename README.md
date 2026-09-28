@@ -155,6 +155,25 @@ curl -X POST http://127.0.0.1:8000/chat \
 - `termination_reason`：正常回答、预算终止或熔断原因
 - `api_usage`：API返回的 token 用量
 
+## 使用 newtrunks 真实云表
+
+项目会自动识别包含 `_idx`、`cloudidx`、`parent`、`radius`、`v_rms`、
+`mass`、`vp`、`level`、`Nstru`、`Dist`、`arms` 和 `touch` 的 newtrunks
+格式，并保留原始字段，同时添加 Agent
+内部使用的标准字段。转换规则会显示在 `get_catalog_schema` 的
+`data_provenance` 中，其中 `v_rms` 按 m/s 转换为 km/s。
+如果父节点未包含在输入表中，`data_provenance.quality` 会报告缺失引用数量；
+程序不会自动补造父节点。
+
+将文件放入 `data/newtrunks.csv`，并在 `.env` 中设置：
+
+```text
+ASTRO_DATA_PATH=data/newtrunks.csv
+```
+
+重启服务后，先调用 `GET /health` 确认行数，再调用 `POST /chat`。真实数据
+不会被 Git 跟踪，因为 `data/*.csv` 已加入 `.gitignore`。
+
 ## 4. 运行 Agent 评测
 
 ```bash
