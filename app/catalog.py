@@ -13,18 +13,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from app.data_profiles import STANDARD_REQUIRED_COLUMNS, normalize_catalog
 
-REQUIRED_COLUMNS = {
-    "structure_id",
-    "parent_id",
-    "cloud_id",
-    "radius_pc",
-    "velocity_dispersion_kms",
-    "mass_msun",
-    "column_density_cm2",
-    "virial_parameter",
-    "hierarchy_level",
-}
+REQUIRED_COLUMNS = STANDARD_REQUIRED_COLUMNS
 
 DATA_DICTIONARY = {
     "structure_id": "结构唯一编号",
@@ -36,6 +27,21 @@ DATA_DICTIONARY = {
     "column_density_cm2": "H2柱密度，单位cm^-2",
     "virial_parameter": "维里参数，无量纲",
     "hierarchy_level": "层级深度，根节点为0",
+    "_idx": "该结构在所属 cloud 内的编号",
+    "radius": "原始半径，单位 pc",
+    "v_rms": "原始速度弥散，单位 m/s",
+    "mass": "原始质量，单位太阳质量",
+    "cloudidx": "该结构所属 cloud 的编号",
+    "Nstru": "该结构包含的子结构数量",
+    "Dist": "该结构的距离，单位 kpc",
+    "arms": "该结构所属的旋臂",
+    "touch": "该结构是否与 datacube 边缘相接；1 是，0 否",
+    "child_structure_count": "子结构数量，由 Nstru 映射",
+    "distance_kpc": "结构距离，单位 kpc，由 Dist 映射",
+    "spiral_arm": "所属旋臂，由 arms 映射",
+    "touches_datacube_edge": "是否与 datacube 边缘相接，由 touch 转为布尔值",
+    "parent": "原目录中的 cloud 内父结构编号",
+    "level": "原目录层级深度",
 }
 
 ALLOWED_OPERATORS = {"eq", "ne", "gt", "ge", "lt", "le", "in"}
@@ -54,7 +60,11 @@ class CatalogAnalyzer:
         self.data_path = data_path
         self.results_dir = results_dir
         self.results_dir.mkdir(parents=True, exist_ok=True)
-        self.df = pd.read_csv(data_path)
+        raw = pd.read_csv(data_path)
+        try:
+            self.df, self.data_profile, self.data_provenance = normalize_catalog(raw)
+        except ValueError as exc:
+            raise CatalogError(str(exc)) from exc
         missing = REQUIRED_COLUMNS - set(self.df.columns)
         if missing:
             raise CatalogError(f"Missing required columns: {sorted(missing)}")
@@ -62,6 +72,8 @@ class CatalogAnalyzer:
     def schema(self) -> dict[str, Any]:
         return {
             "rows": int(len(self.df)),
+            "data_profile": self.data_profile,
+            "data_provenance": self.data_provenance,
             "columns": [
                 {
                     "name": column,
@@ -109,7 +121,10 @@ class CatalogAnalyzer:
     ) -> dict[str, Any]:
         limit = max(1, min(int(limit), 50))
         frame = self._apply_filters(filters)
-        preview = frame.head(limit).where(pd.notnull(frame), None).to_dict(orient="records")
+        preview_frame = frame.head(limit).astype(object)
+        preview = preview_frame.where(pd.notnull(preview_frame), None).to_dict(
+            orient="records"
+        )
         return {
             "matched_rows": int(len(frame)),
             "returned_rows": int(len(preview)),
@@ -225,4 +240,3 @@ class CatalogAnalyzer:
         fig.savefig(output_path)
         plt.close(fig)
         return {"plot_path": str(output_path.resolve()), "fit": fit}
-
