@@ -13,6 +13,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
 python scripts/generate_sample_data.py
+python scripts/ingest_catalog.py --source data/sample_catalog.csv --dataset default --version-label sample-initial
 pytest -q
 
 echo
