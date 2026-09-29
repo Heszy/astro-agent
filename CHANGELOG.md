@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.2.3 (2026-09-29)
+
+### Fix
+
+- fix release artifact publishing
+
 ## v0.2.2 (2026-09-29)
 
 ## v0.2.1 (2026-09-29)
