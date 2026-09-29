@@ -5,6 +5,8 @@ app/agent.py
 app/api.py
 app/catalog.py
 app/config.py
+app/data_profiles.py
+app/fitting.py
 app/harness.py
 app/schemas.py
 app/tools.py

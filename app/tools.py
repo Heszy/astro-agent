@@ -35,13 +35,16 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "fit_scaling_relation",
-            "description": "Fit y versus x in log10 space and return slope, uncertainty, correlation, p-value, and sample size.",
+            "description": "Fit y versus x in log10 space using OLS or orthogonal distance regression (ODR), returning slope, uncertainty, correlation, and sample size.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "x": {"type": "string"},
                     "y": {"type": "string"},
                     "filters": {"type": "object"},
+                    "fit_method": {"type": "string", "enum": ["ols", "odr"]},
+                    "x_error_column": {"type": "string"},
+                    "y_error_column": {"type": "string"},
                     "bootstrap": {"type": "integer", "minimum": 0, "maximum": 2000},
                 },
                 "required": ["x", "y"],
@@ -60,6 +63,9 @@ TOOL_SCHEMAS = [
                     "y": {"type": "string"},
                     "group_column": {"type": "string"},
                     "split_value": {"type": "number"},
+                    "fit_method": {"type": "string", "enum": ["ols", "odr"]},
+                    "x_error_column": {"type": "string"},
+                    "y_error_column": {"type": "string"},
                     "bootstrap": {"type": "integer", "minimum": 0, "maximum": 2000},
                 },
                 "required": ["x", "y", "group_column", "split_value"],
@@ -77,8 +83,40 @@ TOOL_SCHEMAS = [
                     "x": {"type": "string"},
                     "y": {"type": "string"},
                     "filters": {"type": "object"},
+                    "fit_method": {"type": "string", "enum": ["ols", "odr"]},
+                    "x_error_column": {"type": "string"},
+                    "y_error_column": {"type": "string"},
                 },
                 "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "plot_grouped_scaling_relation",
+            "description": "Group a catalog by a categorical field, fit one log-log scaling relation per group, and draw all groups in one PNG. Use for requests such as fitting by spiral arm.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "string"},
+                    "y": {"type": "string"},
+                    "group_column": {"type": "string"},
+                    "filters": {"type": "object"},
+                    "groups": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "fit_method": {"type": "string", "enum": ["ols", "odr"]},
+                    "x_error_column": {"type": "string"},
+                    "y_error_column": {"type": "string"},
+                    "bootstrap": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2000,
+                    },
+                },
+                "required": ["x", "y", "group_column"],
             },
         },
     },
@@ -92,5 +130,5 @@ def build_tool_registry(analyzer: CatalogAnalyzer) -> dict[str, Callable[..., di
         "fit_scaling_relation": analyzer.fit_scaling_relation,
         "compare_scaling_relations": analyzer.compare_scaling_relations,
         "make_plot": analyzer.make_plot,
+        "plot_grouped_scaling_relation": analyzer.plot_grouped_scaling_relation,
     }
-

@@ -9,6 +9,7 @@ Requires-Dist: uvicorn[standard]<1,>=0.30
 Requires-Dist: pandas<3,>=2.2
 Requires-Dist: numpy<3,>=2.0
 Requires-Dist: scipy<2,>=1.13
+Requires-Dist: odrpack<0.7,>=0.6.1
 Requires-Dist: matplotlib<4,>=3.9
 Requires-Dist: openai<3,>=1.68
 Requires-Dist: pydantic-settings<3,>=2.5
@@ -18,115 +19,108 @@ Requires-Dist: pytest<9,>=8.3; extra == "dev"
 
 # AstroAgent
 
-一个面向分子云层级结构目录的科学数据分析 Agent。模型后端使用付费 **DeepSeek API**；工具执行、状态更新、错误反馈、预算和终止由本项目自带的 Agent harness 控制。数值计算始终由本机 Pandas/SciPy 完成，不交给大模型猜测。
+AstroAgent 是一个面向分子云层级结构目录的科学数据分析 Agent。DeepSeek API 负责理解问题和选择工具；数据筛选、统计拟合与绘图由本地 Pandas、SciPy、odrpack 和 Matplotlib 完成。项目使用 FastAPI 提供接口，并通过自研 Agent harness 管理工具校验、执行、重试、预算与终止。
 
-## 项目展示什么
-
-- 自研 Agent harness：状态循环、动作与时间预算、错误预算、重复动作熔断、观察截断和审计轨迹
-- DeepSeek tool calling，但 API 只生成动作，不执行工具
-- FastAPI 工程化封装
-- 科学数据筛选、bootstrap、标度关系拟合与绘图
-- Agent 工具选择正确率与 API 延迟、并发、token 用量评测
-- 参数白名单、失败处理与无 API 单元测试
-
-## 系统结构
+## 系统架构
 
 ```text
 用户问题
    ↓
 FastAPI /chat
    ↓
-DeepSeek API（只生成下一步动作）
+DeepSeek API（生成下一步动作）
    ↓
-自研 Agent Harness（状态 / 校验 / 执行 / 观察 / 重试 / 终止）
+Agent harness（状态、校验、执行、观察、重试、终止）
    ↓
-受控工具层（schema / query / fit / compare / plot）
+受控工具层（schema、query、fit、compare、plot）
    ↓
-本机 Pandas + SciPy + Matplotlib（真实计算）
+Pandas + SciPy + Matplotlib（本地数值计算）
    ↓
-带工具轨迹、终止原因、token 用量和数值证据的回答
+回答、工具轨迹、终止原因、token 用量与数值结果
 ```
 
-## 0. 准备 DeepSeek API
+工程特性：
 
-在 [DeepSeek开放平台](https://platform.deepseek.com/) 创建 API Key 并充值。API Key 只保存在本机 `.env`，不要提交到 Git，也不要截图公开。
+- FastAPI 服务与自动生成的 OpenAPI 文档
+- DeepSeek tool calling 与本地工具执行隔离
+- 工具参数白名单、错误预算、步数预算、时间预算和重复动作熔断
+- 完整工具调用轨迹和 token 用量记录
+- Windows 与 macOS 初始化脚本
+- 不依赖外部 API 的单元测试
+- Agent 工具选择和 API 延迟、并发、token 用量评测脚本
 
-本项目默认使用：
+科学分析能力：
 
-```text
-DEEPSEEK_MODEL=deepseek-flash
-DEEPSEEK_THINKING=false
+- 分子云目录字段和数据来源检查
+- 条件筛选与结构预览
+- 对数空间幂律标度关系拟合
+- bootstrap 斜率置信区间
+- 数值阈值分组后的标度关系比较
+- 对数坐标散点图和拟合线输出
+
+## 环境要求
+
+- Python 3.11 或 3.12
+- DeepSeek API Key
+- Windows 11 或 macOS
+
+API Key 只应保存在本机 `.env` 中，不要提交到 Git。
+
+## Windows 安装与启动
+
+在 PowerShell 中进入项目目录：
+
+```powershell
+cd C:\你的路径\astro-agent
 ```
 
-工具路由任务不需要长思考，因此默认关闭 thinking，以降低延迟和费用。模型名称和价格可能变化，运行前以 [DeepSeek官方价格页](https://api-docs.deepseek.com/quick_start/pricing/) 为准。
-
-## 1. 环境准备
-
-### Windows 11
-
-在 PowerShell 中安装 Python 3.12：
+如果尚未安装 Python 3.12：
 
 ```powershell
 winget install Python.Python.3.12
 ```
 
-安装完成后重新打开 PowerShell，解压并进入项目目录：
+重新打开 PowerShell，然后运行初始化脚本：
 
 ```powershell
-cd C:\你的路径\astro-agent
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup_windows.ps1
 ```
 
-`Set-ExecutionPolicy -Scope Process Bypass` 只对当前PowerShell窗口生效，不会永久修改系统策略。初始化脚本会创建 `.venv`、安装依赖、生成示例数据、运行7项离线测试，并在不存在时创建 `.env`。
+该脚本会创建 `.venv`、安装依赖、生成示例目录、运行离线测试，并在 `.env` 不存在时根据模板创建配置文件。
 
-编辑密钥：
+编辑配置：
 
 ```powershell
 notepad .env
 ```
 
-然后启动：
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-uvicorn app.api:app --reload
-```
-
-如果不希望激活虚拟环境，也可以直接执行：
+启动服务：
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.api:app --reload
 ```
 
-### macOS
+## macOS 安装与启动
 
-建议使用 Python 3.11 或 3.12：
+安装 Python 并初始化项目：
 
 ```bash
 brew install python@3.12
-```
-
-解压并进入项目目录，然后执行：
-
-```bash
+cd /你的路径/astro-agent
 bash scripts/setup_mac.sh
 ```
 
-该脚本会创建 `.venv`、安装依赖、生成720行示例目录并运行不调用 API 的测试。预期看到：
-
-```text
-7 passed
-```
-
-## 2. 配置密钥
+编辑配置后启动服务：
 
 ```bash
-cp .env.example .env
-nano .env
+source .venv/bin/activate
+uvicorn app.api:app --reload
 ```
 
-把占位符替换成真实密钥：
+## 配置
+
+`.env` 的基本配置如下：
 
 ```text
 DEEPSEEK_API_KEY=sk-你的密钥
@@ -137,20 +131,19 @@ ASTRO_DATA_PATH=data/sample_catalog.csv
 ASTRO_RESULTS_DIR=results
 ```
 
-保存 `nano`：按 `Ctrl-O`、回车，再按 `Ctrl-X`。
+工具路由通常不需要长思考，因此默认关闭 thinking，以降低延迟与 API 费用。模型名称与价格可能变化，运行前请查看 [DeepSeek 官方文档](https://api-docs.deepseek.com/)。
 
-## 3. 启动服务
+## API 使用
 
-```bash
-source .venv/bin/activate
-uvicorn app.api:app --reload
+服务启动后打开：
+
+```text
+http://127.0.0.1:8000/docs
 ```
 
-打开 <http://127.0.0.1:8000/docs>：
+先调用 `GET /health`，确认数据路径、行数和 API Key 配置状态。该接口不会调用 DeepSeek API。
 
-1. 调用 `GET /health`。这个请求不会调用付费 API。
-2. 确认 `api_key_configured` 为 `true`。
-3. 调用 `POST /chat`，输入：
+再调用 `POST /chat`：
 
 ```json
 {
@@ -158,7 +151,7 @@ uvicorn app.api:app --reload
 }
 ```
 
-也可以在新终端调用：
+Linux/macOS 也可以使用 curl：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/chat \
@@ -166,90 +159,207 @@ curl -X POST http://127.0.0.1:8000/chat \
   -d '{"question":"拟合半径与速度弥散的标度关系，报告斜率和95%置信区间。"}'
 ```
 
-响应中的关键字段：
+响应中的主要字段：
 
-- `trace`：每次工具动作、参数、结果、状态和耗时
-- `steps`：Agent决策步数
-- `termination_reason`：正常回答、预算终止或熔断原因
-- `api_usage`：API返回的 token 用量
+- `answer`：基于工具结果生成的回答
+- `trace`：工具名称、参数、结果、状态和耗时
+- `steps`：Agent 决策步数
+- `termination_reason`：正常回答或预算终止原因
+- `api_usage`：API 返回的 token 用量
 
-## 4. 运行 Agent 评测
+## 工具
 
-```bash
-python scripts/benchmark_agent.py
-```
+当前工具层包括：
 
-该命令会产生真实 API 费用。它运行6个问题，主要检查模型是否选择正确工具，结果保存到：
+| 工具 | 功能 |
+|---|---|
+| `get_catalog_schema` | 返回行数、字段、类型、物理含义和数据转换记录 |
+| `query_structures` | 使用 `eq`、`ne`、`gt`、`ge`、`lt`、`le`、`in` 筛选目录 |
+| `fit_scaling_relation` | 在 log10 空间使用 OLS 或 ODR 拟合两个物理量的幂律关系 |
+| `compare_scaling_relations` | 按数值阈值拆分样本并比较两组斜率 |
+| `make_plot` | 生成对数坐标散点图和拟合线 PNG |
+| `plot_grouped_scaling_relation` | 按类别分别拟合，并将各组散点和拟合线绘制在同一张 PNG 中 |
 
-```text
-results/agent_benchmark.csv
-```
+模型只能调用注册工具，不能执行任意 Python、Shell 或 SQL。
 
-## 5. 运行 DeepSeek API 性能评测
+## 数据格式
 
-```bash
-python scripts/benchmark_api.py
-```
+### 标准格式
 
-默认在并发1和2下分别调用3次，并把单次输出限制在160 token。记录：
-
-- 总响应时间
-- prompt/completion/total tokens
-- 近似输出 tokens/s
-- cache hit/miss tokens（若API返回）
-
-结果保存到：
+标准 CSV 至少需要以下字段：
 
 ```text
-results/deepseek_api_benchmark.csv
+structure_id,cloud_id,radius_pc,velocity_dispersion_kms
 ```
 
-脚本故意不硬编码费用，因为官方价格会调整。用 CSV 中的 token 数和运行时官方价格计算实际费用。
-
-## 6. 替换真实数据
-
-真实 CSV 第一版需要这些列：
+可以同时包含：
 
 ```text
-structure_id,parent_id,cloud_id,radius_pc,velocity_dispersion_kms,
-mass_msun,column_density_cm2,virial_parameter,hierarchy_level
+parent_id,mass_msun,column_density_cm2,virial_parameter,hierarchy_level
 ```
 
-复制数据：
+其中半径单位为 pc，速度弥散单位为 km/s，质量单位为太阳质量。
 
-```bash
-cp /你的路径/catalog.csv data/molecular_cloud_catalog.csv
-```
-
-修改 `.env`：
+将文件放入 `data/`，并修改 `.env`：
 
 ```text
 ASTRO_DATA_PATH=data/molecular_cloud_catalog.csv
 ```
 
-如果列名不同，优先在导出时重命名。不要删除 `REQUIRED_COLUMNS` 检查；单位必须同步更新 `app/catalog.py` 中的 `DATA_DICTIONARY`。
+### newtrunks 格式
 
-## 7. 面试演示顺序
+项目会自动识别包含以下字段的目录：
 
-1. 展示 `/health`，说明数据和工具在本地，模型使用DeepSeek API。
-2. 展示 `app/harness.py`，说明模型不控制循环和工具执行。
-3. 提问“目录有哪些字段”，展示schema动作。
-4. 提问带筛选条件的标度关系问题。
-5. 展示工具参数、样本量、斜率、置信区间和生成图。
-6. 展示异常动作熔断测试和两个 benchmark CSV。
-7. 展示每次请求的 token 用量，说明成本意识。
+```text
+_idx,cloudidx,parent,radius,v_rms,mass,vp,level,Nstru,Dist,arms,touch
+```
+
+加载时保留原始字段，并生成统一分析字段：
+
+| 原始字段 | 统一字段 | 处理方式 |
+|---|---|---|
+| `_idx`、`cloudidx` | `structure_id` | 组合为 `cloudidx:_idx`，避免不同云内编号重复 |
+| `parent`、`cloudidx` | `parent_id` | 组合为 `cloudidx:parent` |
+| `radius` | `radius_pc` | 单位保持为 pc |
+| `v_rms` | `velocity_dispersion_kms` | 从 m/s 除以 1000 转换为 km/s |
+| `mass` | `mass_msun` | 单位保持为太阳质量 |
+| `vp` | `virial_parameter` | 数值转换 |
+| `level` | `hierarchy_level` | 整数转换 |
+| `Nstru` | `child_structure_count` | 整数转换 |
+| `Dist` | `distance_kpc` | 单位保持为 kpc |
+| `arms` | `spiral_arm` | 字符串转换 |
+| `touch` | `touches_datacube_edge` | `0/1` 转换为布尔值 |
+
+例如将数据保存为 `data/newtrunks.csv`，并设置：
+
+```text
+ASTRO_DATA_PATH=data/newtrunks.csv
+```
+
+`get_catalog_schema` 返回的 `data_provenance` 会记录转换规则和缺失父节点引用数量。程序不会自动补造输入表中不存在的父节点。`data/*.csv` 默认不会被 Git 跟踪。
+
+### 按旋臂分组拟合并绘图
+
+当需要把不同旋臂的数据画在同一张对数坐标图中时，Agent 会调用
+`plot_grouped_scaling_relation`。该工具对 `spiral_arm` 的每个分组分别拟合，
+并返回每组的样本量、斜率、95% bootstrap 置信区间和 PNG 路径。例如：
+
+```json
+{
+  "question": "使用不与datacube相接的结构，分旋臂拟合线宽尺度关系，报告每个旋臂的样本量、斜率和95%置信区间，并将所有旋臂画在同一张图里。"
+}
+```
+
+工具参数中的 `filters` 可用于筛选 `touches_datacube_edge=false`，
+`group_column` 默认是 `spiral_arm`。输出中的 `groups` 保存各组数值结果，
+`plot_path` 指向生成的图像；有效正值样本少于 8 个的分组会标记为 `skipped`。
+
+## 科学计算方法
+
+标度关系统一在 log10–log10 空间中拟合：
+
+```text
+log10(y) = intercept + slope × log10(x)
+y = 10^intercept × x^slope
+```
+
+计算流程：
+
+1. 应用用户指定的目录筛选条件。
+2. 删除拟合字段中的空值。
+3. 删除 `x <= 0` 或 `y <= 0` 的数据，因为其对数无定义。
+4. 要求至少 8 个有效样本。
+5. 默认使用普通最小二乘法（OLS），通过 `scipy.stats.linregress` 计算斜率、截距、相关系数、p 值和标准误。
+6. 用户指定 `fit_method=odr` 时，使用 `odrpack` 执行正交距离回归；如果提供误差列，则在 log 空间中使用对应的一倍标准差进行加权。
+7. 使用固定随机种子的重复有放回抽样，计算斜率的 2.5% 和 97.5% 分位数作为 bootstrap 95% 置信区间。
+
+选择拟合方法的请求示例：
+
+```json
+{
+  "question": "使用ODR正交回归拟合半径与速度弥散的标度关系。"
+}
+```
+
+如果目录包含 `radius_error_pc` 和 `velocity_error_kms` 两个误差列，可以显式指定：
+
+```json
+{
+  "x": "radius_pc",
+  "y": "velocity_dispersion_kms",
+  "fit_method": "odr",
+  "x_error_column": "radius_error_pc",
+  "y_error_column": "velocity_error_kms",
+  "bootstrap": 1000
+}
+```
+
+误差列应是原始线性单位的一倍标准差。程序会近似转换为
+`sigma_log10(x) = sigma_x / (x * ln(10))`。没有误差列时仍可运行无权重 ODR，
+但结果会明确标记为没有使用测量误差。ODR 的结果不提供与 OLS 相同含义的斜率
+p 值，建议主要比较斜率和 bootstrap 置信区间。
+
+默认执行 300 次 bootstrap，工具参数允许的范围为 0–2000 次。固定随机种子用于保证同一数据和参数下结果可复现。
+
+科学解释时需要注意：
+
+- 对数线性拟合描述相关关系，不直接证明因果关系。
+- OLS 假设 x 方向误差可以忽略；ODR 适用于 x、y 都存在误差的情形。
+- 无误差列的 ODR 是无权重正交拟合，不等于已经建模了测量误差。
+- bootstrap 区间不替代完整的系统误差、选择效应或层级相关性分析。
+- 同一分子云内部的父子结构可能不满足独立同分布假设。
+- 比较两组斜率的数值差异不等价于差异具有统计显著性。
+- datacube 边缘截断、距离选择效应和目录完备性可能影响拟合结果。
+
+## 测试
+
+运行全部离线测试：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+或在已激活的虚拟环境中运行：
+
+```bash
+python -m pytest -q
+```
+
+单元测试使用模拟模型和临时目录，不调用 DeepSeek API，因此不会产生 API 费用。
+
+## 性能与 Agent 评测
+
+运行 Agent 工具选择评测：
+
+```bash
+python scripts/benchmark_agent.py
+```
+
+该脚本会调用真实 API，结果写入：
+
+```text
+results/agent_benchmark.csv
+```
+
+运行 DeepSeek API 性能评测：
+
+```bash
+python scripts/benchmark_api.py
+```
+
+评测记录总响应时间、prompt/completion/total tokens、近似输出速度，以及 API 返回的 cache hit/miss tokens。结果写入：
+
+```text
+results/deepseek_api_benchmark.csv
+```
+
+评测脚本不硬编码费用；应结合结果中的 token 数与运行时官方价格计算成本。
 
 ## 安全与边界
 
-- API Key 只从环境变量读取，`.env` 已加入 `.gitignore`。
-- 用户问题、系统提示词和返回给模型的工具结果会发送给 DeepSeek API；不要直接处理保密数据。
-- 这是目录级分析，不直接读取35亿体素原始数据。
-- bootstrap置信区间不是所有科学问题的完整显著性检验。
-- 当前服务没有身份验证，不应暴露到公网。
-- harness 不允许模型执行任意 Python、Shell 或 SQL。
-
-## 简历描述模板
-
-> 自研面向科学数据分析的 Agent harness，使用 DeepSeek API 生成工具动作，在本地完成动作校验、数据查询、bootstrap 标度关系拟合和可视化；实现步数/时间/错误预算、重复动作熔断、完整审计轨迹与 token 用量统计，并通过 FastAPI 对外提供服务。建立工具选择正确率及不同并发下 API 延迟、吞吐和 token 成本评测流程，数值结果由 Pandas/SciPy 确定性计算。
-
-把真实准确率、延迟和 token 数据补在末尾，不要填写未实际测得的指标。
+- `.env` 已加入 `.gitignore`，API Key 只从环境变量读取。
+- 用户问题、系统提示词和返回给模型的工具结果会发送给 DeepSeek API；不要直接处理不能发送到第三方服务的保密数据。
+- 数值计算在本地进行，但模型仍会接收经过截断的工具观察结果。
+- 当前系统针对目录级数据，不直接处理完整 datacube 的体素级计算。
+- 当前 FastAPI 服务没有身份验证，不应直接暴露到公网。
+- 工具调用轨迹有助于复核执行过程，但不等同于科学结果的同行评议。
