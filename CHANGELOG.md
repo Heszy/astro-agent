@@ -2,24 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## v0.2.1 (2026-09-29)
 
-### Highlights
+### Feat
 
-- Added a reproducible release pipeline for the Python package.
-- Added SHA256 manifests for release artifacts.
-- Added a user-facing release-notes section that is published with each tag.
+- add release pipeline
+- add deterministic scientific skills
 
-### Engineering
+### Fix
 
-- Package builds are tested before publication.
-- PyPI publication uses GitHub Actions and Trusted Publishing.
+- ensure release highlights
 
-### Verification
-
-- Run `python -m pytest -q` before creating a release tag.
-- Run `python -m build` and `python -m twine check dist/*` to validate distributions.
-=======
 ## v0.2.0 (2026-09-29)
 
 ### Feat

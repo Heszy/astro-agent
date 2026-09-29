@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "astro-agent"
-version = "0.2.0"
+version = "0.2.1"
 description = "A verifiable LLM agent for hierarchical molecular-cloud catalog analysis"
 readme = "README.md"
 requires-python = ">=3.11"
