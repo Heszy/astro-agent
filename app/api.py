@@ -6,7 +6,7 @@ from app.agent import AstroAgent
 from app.catalog import CatalogAnalyzer, CatalogError
 from app.config import get_settings
 from app.schemas import ChatRequest, ChatResponse, HealthResponse
-from app.storage import CatalogStoreError, DuckDBCatalogStore
+from app.storage import DuckDBCatalogStore
 
 
 settings = get_settings()
@@ -19,27 +19,24 @@ app = FastAPI(
 
 
 def get_analyzer() -> CatalogAnalyzer:
-    try:
-        catalog_store.get_version(
-            settings.astro_catalog_version, settings.astro_dataset_id
-        )
-        return CatalogAnalyzer(
-            None,
-            settings.astro_results_dir,
-            store=catalog_store,
-            dataset_id=settings.astro_dataset_id,
-            version_id=settings.astro_catalog_version,
-        )
-    except CatalogStoreError:
-        return CatalogAnalyzer(settings.astro_data_path, settings.astro_results_dir)
+    return CatalogAnalyzer(
+        None,
+        settings.astro_results_dir,
+        store=catalog_store,
+        dataset_id=settings.astro_dataset_id,
+        version_id=settings.astro_catalog_version,
+    )
 
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     rows = None
     status = "ok"
+    version_id = None
     try:
-        rows = len(get_analyzer().df)
+        analyzer = get_analyzer()
+        rows = len(analyzer.df)
+        version_id = analyzer.data_context.get("version_id")
     except CatalogError:
         status = "data_missing"
     api_key_configured = settings.deepseek_api_key is not None
@@ -47,9 +44,11 @@ def health() -> HealthResponse:
         status=status,
         provider="deepseek",
         model=settings.deepseek_model,
-        data_path=str(settings.astro_data_path),
+        data_path=str(settings.astro_db_path),
         rows=rows,
         api_key_configured=api_key_configured,
+        dataset_id=settings.astro_dataset_id,
+        version_id=version_id,
     )
 
 

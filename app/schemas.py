@@ -33,3 +33,5 @@ class HealthResponse(BaseModel):
     data_path: str
     rows: int | None = None
     api_key_configured: bool
+    dataset_id: str
+    version_id: str | None = None

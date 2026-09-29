@@ -8,7 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    astro_data_path: Path = Path("data/sample_catalog.csv")
     astro_db_path: Path = Path("data/astro_catalog.duckdb")
     astro_dataset_id: str = "default"
     astro_catalog_version: str = "latest"

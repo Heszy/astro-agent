@@ -108,7 +108,9 @@ DEEPSEEK_API_KEY=sk-你的密钥
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-flash
 DEEPSEEK_THINKING=false
-ASTRO_DATA_PATH=data/sample_catalog.csv
+ASTRO_DB_PATH=data/astro_catalog.duckdb
+ASTRO_DATASET_ID=default
+ASTRO_CATALOG_VERSION=latest
 ASTRO_RESULTS_DIR=results
 ```
 
@@ -133,7 +135,7 @@ ASTRO_DATASET_ID=newtrunks
 ASTRO_CATALOG_VERSION=latest
 ```
 
-`latest` 只在一次分析开始时解析为具体版本，分析结果和工具输出会携带 `version_id`、源文件 SHA256 和字段来源信息。原有 `ASTRO_DATA_PATH` CSV 配置仍可作为没有 DuckDB 快照时的兼容回退。
+`latest` 只在一次分析开始时解析为具体版本，分析结果和工具输出会携带 `version_id`、源文件 SHA256 和字段来源信息。服务运行时只读取 DuckDB；CSV 仅通过导入脚本进入数据库。
 
 工具路由通常不需要长思考，因此默认关闭 thinking，以降低延迟与 API 费用。模型名称与价格可能变化，运行前请查看 [DeepSeek 官方文档](https://api-docs.deepseek.com/)。
 
@@ -233,10 +235,13 @@ parent_id,mass_msun,column_density_cm2,virial_parameter,hierarchy_level
 
 其中半径单位为 pc，速度弥散单位为 km/s，质量单位为太阳质量。
 
-将文件放入 `data/`，并修改 `.env`：
+将 CSV 放入 `data/` 后，使用导入脚本写入 DuckDB：
 
-```text
-ASTRO_DATA_PATH=data/molecular_cloud_catalog.csv
+```powershell
+python scripts/ingest_catalog.py `
+  --source data/molecular_cloud_catalog.csv `
+  --dataset molecular-clouds `
+  --version-label 2026.09.29.1
 ```
 
 ### newtrunks 格式
@@ -263,13 +268,23 @@ _idx,cloudidx,parent,radius,v_rms,mass,vp,level,Nstru,Dist,arms,touch
 | `arms` | `spiral_arm` | 字符串转换 |
 | `touch` | `touches_datacube_edge` | `0/1` 转换为布尔值 |
 
-例如将数据保存为 `data/newtrunks.csv`，并设置：
+例如将数据保存为 `data/newtrunks.csv`，然后执行：
 
-```text
-ASTRO_DATA_PATH=data/newtrunks.csv
+```powershell
+python scripts/ingest_catalog.py `
+  --source data/newtrunks.csv `
+  --dataset newtrunks `
+  --version-label 2026.09.29.1
 ```
 
-`get_catalog_schema` 返回的 `data_provenance` 会记录转换规则和缺失父节点引用数量。程序不会自动补造输入表中不存在的父节点。`data/*.csv` 默认不会被 Git 跟踪。
+并在 `.env` 中设置：
+
+```env
+ASTRO_DATASET_ID=newtrunks
+ASTRO_CATALOG_VERSION=latest
+```
+
+`get_catalog_schema` 返回的 `data_provenance` 会记录转换规则和缺失父节点引用数量。程序不会自动补造输入表中不存在的父节点。`data/*.csv` 和 `data/*.duckdb` 默认不会被 Git 跟踪。
 
 ### 按旋臂分组拟合并绘图
 
