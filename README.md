@@ -160,8 +160,37 @@ curl -X POST http://127.0.0.1:8000/chat \
 | `compare_scaling_relations` | 按数值阈值拆分样本并比较两组斜率 |
 | `make_plot` | 生成对数坐标散点图和拟合线 PNG |
 | `plot_grouped_scaling_relation` | 按类别分别拟合，并将各组散点和拟合线绘制在同一张 PNG 中 |
+| `run_scaling_relation_skill` | 固定执行字段检查、单关系拟合、bootstrap 和可选绘图流程 |
+| `run_grouped_scaling_skill` | 固定执行字段检查、分组拟合和统一绘图流程 |
 
 模型只能调用注册工具，不能执行任意 Python、Shell 或 SQL。
+
+## Skills 与 Tools
+
+Tools 是单个原子动作，例如查询字段、执行一次拟合或生成一张图；Skills 是由项目控制的完整科学工作流。对于标准标度关系问题，模型优先调用
+`run_scaling_relation_skill`，由 Skill 固定执行：
+
+```text
+get_catalog_schema → fit_scaling_relation → 可选 make_plot
+```
+
+对于旋臂或其他类别分组问题，模型优先调用 `run_grouped_scaling_skill`，由 Skill 固定执行字段检查、分组拟合和统一绘图。每个 Skill 都返回名称、版本、步骤、结果、artifact 和警告，便于复核和测试。低层 Tools 仍保留，用于数据探索和调试；未知任务则回退到通用工具调用流程。
+
+Skill 的版本化结果示例：
+
+```json
+{
+  "skill": {
+    "name": "scaling_relation_analysis",
+    "version": "1.0.0"
+  },
+  "status": "completed",
+  "steps": [],
+  "result": {},
+  "artifacts": [],
+  "warnings": []
+}
+```
 
 ## 数据格式
 
