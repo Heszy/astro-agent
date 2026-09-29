@@ -40,6 +40,13 @@ def test_extract_release_notes_promotes_generated_bullets() -> None:
     assert notes.startswith("### Highlights")
 
 
+def test_extract_release_notes_handles_empty_version_section() -> None:
+    changelog = "## v0.2.0\n"
+
+    notes = extract(changelog, "v0.2.0")
+    assert "Release maintenance and packaging updates." in notes
+
+
 def test_hash_artifacts_writes_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()
