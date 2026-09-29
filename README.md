@@ -174,6 +174,22 @@ ASTRO_DATA_PATH=data/newtrunks.csv
 重启服务后，先调用 `GET /health` 确认行数，再调用 `POST /chat`。真实数据
 不会被 Git 跟踪，因为 `data/*.csv` 已加入 `.gitignore`。
 
+## 按旋臂分组拟合并绘图
+
+当需要把不同旋臂的数据画在同一张对数坐标图中时，Agent 会调用
+`plot_grouped_scaling_relation`。该工具对每个 `spiral_arm` 分组分别拟合，
+并返回每组的样本量、斜率、95% bootstrap 置信区间以及 PNG 路径。例如：
+
+```json
+{
+  "question": "使用不与datacube相接的结构，分旋臂拟合线宽尺度关系，报告每个旋臂的样本量、斜率，并画在同一张图里。"
+}
+```
+
+工具参数中的 `filters` 可用于筛选 `touches_datacube_edge=false`，
+`group_column` 默认是 `spiral_arm`。输出中的 `groups` 与 `plot_path`
+分别对应数值结果和图像文件；样本量过少的分组会被标记为 `skipped`，不会参与拟合。
+
 ## 4. 运行 Agent 评测
 
 ```bash

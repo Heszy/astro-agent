@@ -82,6 +82,32 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "plot_grouped_scaling_relation",
+            "description": "Group a catalog by a categorical field, fit one log-log scaling relation per group, and draw all groups in one PNG. Use for requests such as fitting by spiral arm.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "string"},
+                    "y": {"type": "string"},
+                    "group_column": {"type": "string"},
+                    "filters": {"type": "object"},
+                    "groups": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "bootstrap": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2000,
+                    },
+                },
+                "required": ["x", "y", "group_column"],
+            },
+        },
+    },
 ]
 
 
@@ -92,5 +118,5 @@ def build_tool_registry(analyzer: CatalogAnalyzer) -> dict[str, Callable[..., di
         "fit_scaling_relation": analyzer.fit_scaling_relation,
         "compare_scaling_relations": analyzer.compare_scaling_relations,
         "make_plot": analyzer.make_plot,
+        "plot_grouped_scaling_relation": analyzer.plot_grouped_scaling_relation,
     }
-
