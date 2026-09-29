@@ -6,6 +6,8 @@ __pycache__/
 .env
 *.pyc
 data/*.csv
+data/*.duckdb
+data/*.duckdb.wal
 results/*.csv
 results/*.png
 dist/

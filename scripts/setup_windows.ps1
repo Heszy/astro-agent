@@ -46,6 +46,7 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -e ".[dev]"
 & $venvPython scripts\generate_sample_data.py
+& $venvPython scripts\ingest_catalog.py --source data\sample_catalog.csv --dataset default --version-label sample-initial
 & $venvPython -m pytest -q
 
 $envFile = Join-Path $projectRoot ".env"
