@@ -112,6 +112,29 @@ ASTRO_DATA_PATH=data/sample_catalog.csv
 ASTRO_RESULTS_DIR=results
 ```
 
+### DuckDB 数据目录与版本
+
+项目可以将标准化后的目录快照保存到 DuckDB。每次导入都会记录源文件 SHA256、字段标准化规则、行数和数据版本；已有版本不会被覆盖。
+
+先导入一个目录：
+
+```powershell
+python scripts/ingest_catalog.py `
+  --source data/newtrunks.csv `
+  --dataset newtrunks `
+  --version-label 2026.09.29.1
+```
+
+默认数据库路径为 `data/astro_catalog.duckdb`，也可以通过环境变量修改：
+
+```env
+ASTRO_DB_PATH=data/astro_catalog.duckdb
+ASTRO_DATASET_ID=newtrunks
+ASTRO_CATALOG_VERSION=latest
+```
+
+`latest` 只在一次分析开始时解析为具体版本，分析结果和工具输出会携带 `version_id`、源文件 SHA256 和字段来源信息。原有 `ASTRO_DATA_PATH` CSV 配置仍可作为没有 DuckDB 快照时的兼容回退。
+
 工具路由通常不需要长思考，因此默认关闭 thinking，以降低延迟与 API 费用。模型名称与价格可能变化，运行前请查看 [DeepSeek 官方文档](https://api-docs.deepseek.com/)。
 
 ## API 使用

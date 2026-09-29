@@ -6,9 +6,11 @@ from app.agent import AstroAgent
 from app.catalog import CatalogAnalyzer, CatalogError
 from app.config import get_settings
 from app.schemas import ChatRequest, ChatResponse, HealthResponse
+from app.storage import CatalogStoreError, DuckDBCatalogStore
 
 
 settings = get_settings()
+catalog_store = DuckDBCatalogStore(settings.astro_db_path)
 app = FastAPI(
     title="AstroAgent",
     version="0.1.0",
@@ -17,7 +19,19 @@ app = FastAPI(
 
 
 def get_analyzer() -> CatalogAnalyzer:
-    return CatalogAnalyzer(settings.astro_data_path, settings.astro_results_dir)
+    try:
+        catalog_store.get_version(
+            settings.astro_catalog_version, settings.astro_dataset_id
+        )
+        return CatalogAnalyzer(
+            None,
+            settings.astro_results_dir,
+            store=catalog_store,
+            dataset_id=settings.astro_dataset_id,
+            version_id=settings.astro_catalog_version,
+        )
+    except CatalogStoreError:
+        return CatalogAnalyzer(settings.astro_data_path, settings.astro_results_dir)
 
 
 @app.get("/health", response_model=HealthResponse)

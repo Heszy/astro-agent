@@ -13,6 +13,7 @@ import pandas as pd
 
 from app.data_profiles import STANDARD_REQUIRED_COLUMNS, normalize_catalog
 from app.fitting import FitError, fit_with_bootstrap, validate_fit_method
+from app.storage import CatalogStoreError, DuckDBCatalogStore
 
 REQUIRED_COLUMNS = STANDARD_REQUIRED_COLUMNS
 
@@ -51,19 +52,43 @@ class CatalogError(ValueError):
 
 
 class CatalogAnalyzer:
-    def __init__(self, data_path: Path, results_dir: Path):
-        if not data_path.exists():
-            raise CatalogError(
-                f"Catalog not found: {data_path}. Run: python scripts/generate_sample_data.py"
-            )
-        self.data_path = data_path
+    def __init__(
+        self,
+        data_path: Path | None,
+        results_dir: Path,
+        *,
+        store: DuckDBCatalogStore | None = None,
+        dataset_id: str | None = None,
+        version_id: str | None = None,
+    ):
+        self.data_context: dict[str, Any] = {}
+        if store is not None:
+            try:
+                self.df, self.data_context = store.load_frame(dataset_id, version_id)
+            except CatalogStoreError as exc:
+                raise CatalogError(str(exc)) from exc
+            self.data_path = Path(self.data_context["source_path"])
+        else:
+            if data_path is None or not data_path.exists():
+                raise CatalogError(
+                    f"Catalog not found: {data_path}. Run: python scripts/generate_sample_data.py"
+                )
+            self.data_path = data_path
+            raw = pd.read_csv(data_path)
+            try:
+                self.df, data_profile, data_provenance = normalize_catalog(raw)
+            except ValueError as exc:
+                raise CatalogError(str(exc)) from exc
+            self.data_context = {
+                "source_path": str(data_path.resolve()),
+                "data_profile": data_profile,
+                "provenance": data_provenance,
+                "version_id": None,
+            }
+        self.data_profile = self.data_context.get("data_profile", "unknown")
+        self.data_provenance = self.data_context.get("provenance", {})
         self.results_dir = results_dir
         self.results_dir.mkdir(parents=True, exist_ok=True)
-        raw = pd.read_csv(data_path)
-        try:
-            self.df, self.data_profile, self.data_provenance = normalize_catalog(raw)
-        except ValueError as exc:
-            raise CatalogError(str(exc)) from exc
         missing = REQUIRED_COLUMNS - set(self.df.columns)
         if missing:
             raise CatalogError(f"Missing required columns: {sorted(missing)}")
@@ -71,8 +96,9 @@ class CatalogAnalyzer:
     def schema(self) -> dict[str, Any]:
         return {
             "rows": int(len(self.df)),
-            "data_profile": self.data_profile,
-            "data_provenance": self.data_provenance,
+            "data_profile": self.data_context.get("data_profile", "unknown"),
+            "data_provenance": self.data_context.get("provenance", {}),
+            "data_version": self.data_context,
             "columns": [
                 {
                     "name": column,
@@ -128,6 +154,7 @@ class CatalogAnalyzer:
             "matched_rows": int(len(frame)),
             "returned_rows": int(len(preview)),
             "rows": preview,
+            "data_version": self.data_context,
         }
 
     def _fit_frame(
@@ -200,6 +227,7 @@ class CatalogAnalyzer:
             "sample_size": int(len(frame)),
             "rows_dropped_during_preparation": int(rows_before - len(frame)),
             "uncertainty_columns": {"x": x_error_column, "y": y_error_column},
+            "data_version": self.data_context,
             **fit,
             "bootstrap_iterations": int(len(slopes)),
         }
