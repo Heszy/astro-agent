@@ -10,6 +10,10 @@ app/fitting.py
 app/harness.py
 app/schemas.py
 app/tools.py
+app/skills/__init__.py
+app/skills/base.py
+app/skills/registry.py
+app/skills/scaling_relation.py
 astro_agent.egg-info/PKG-INFO
 astro_agent.egg-info/SOURCES.txt
 astro_agent.egg-info/dependency_links.txt
@@ -17,3 +21,4 @@ astro_agent.egg-info/requires.txt
 astro_agent.egg-info/top_level.txt
 tests/test_agent.py
 tests/test_catalog.py
+tests/test_skills.py
