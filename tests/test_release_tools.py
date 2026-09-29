@@ -28,6 +28,18 @@ def test_extract_release_notes_rejects_missing_version() -> None:
         extract("## [0.1.0]\n\n### Highlights\n- Old\n", "v0.2.0")
 
 
+def test_extract_release_notes_promotes_generated_bullets() -> None:
+    changelog = """## v0.2.0
+
+### Feat
+
+- A generated feature.
+"""
+
+    notes = extract(changelog, "v0.2.0")
+    assert notes.startswith("### Highlights")
+
+
 def test_hash_artifacts_writes_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()

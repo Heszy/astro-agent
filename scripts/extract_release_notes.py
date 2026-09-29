@@ -18,7 +18,14 @@ def extract(changelog: str, version: str) -> str:
         raise ValueError(f"No changelog section found for {version}")
     body = match.group("body").strip()
     if not re.search(r"^###\s+Highlights\s*$", body, re.MULTILINE):
-        raise ValueError(f"Changelog section for {version} has no Highlights heading")
+        # Commitizen generates category headings from Conventional Commits. If a
+        # release section has no manually curated Highlights heading, promote the
+        # first few generated bullets so the GitHub Release remains user-facing.
+        bullets = re.findall(r"^\s*-\s+.+$", body, re.MULTILINE)
+        if not bullets:
+            raise ValueError(f"Changelog section for {version} has no release entries")
+        highlights = "### Highlights\n\n" + "\n".join(bullets[:3])
+        body = highlights + "\n\n" + body
     return body + "\n"
 
 
