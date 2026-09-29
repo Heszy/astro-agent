@@ -19,3 +19,13 @@ All notable changes to this project are documented in this file.
 
 - Run `python -m pytest -q` before creating a release tag.
 - Run `python -m build` and `python -m twine check dist/*` to validate distributions.
+=======
+## v0.2.0 (2026-09-29)
+
+### Feat
+
+- support OLS and ODR scaling fits
+- add grouped scaling relation plot
+- support newtrunks research catalog
+- implement verifiable deepseek astronomy agent
+
