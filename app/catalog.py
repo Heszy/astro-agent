@@ -240,3 +240,111 @@ class CatalogAnalyzer:
         fig.savefig(output_path)
         plt.close(fig)
         return {"plot_path": str(output_path.resolve()), "fit": fit}
+
+    def plot_grouped_scaling_relation(
+        self,
+        x: str = "radius_pc",
+        y: str = "velocity_dispersion_kms",
+        group_column: str = "spiral_arm",
+        filters: dict[str, dict[str, Any]] | None = None,
+        groups: list[str] | None = None,
+        bootstrap: int = 300,
+    ) -> dict[str, Any]:
+        """Fit and plot one log-log relation per categorical group."""
+
+        for column in (x, y, group_column):
+            if column not in self.df.columns:
+                raise CatalogError(f"Unknown column: {column}")
+        if filters and group_column in filters:
+            raise CatalogError(
+                f"Do not filter {group_column} directly; use the 'groups' argument."
+            )
+
+        base_frame = self._apply_filters(filters)
+        available_groups = (
+            base_frame[group_column].dropna().astype(str).sort_values().unique().tolist()
+        )
+        group_values = available_groups if groups is None else [str(group) for group in groups]
+        if not group_values:
+            raise CatalogError("No non-null groups remain after filtering")
+
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
+        colors = plt.get_cmap("tab10")
+        group_results: dict[str, dict[str, Any]] = {}
+        plotted_groups: list[str] = []
+
+        for index, group in enumerate(group_values):
+            group_filters = dict(filters or {})
+            group_filters[group_column] = {"eq": group}
+            try:
+                group_frame, fit = self._fit_frame(x, y, group_filters, bootstrap)
+            except CatalogError as exc:
+                group_results[group] = {
+                    "status": "skipped",
+                    "sample_size": int(
+                        len(base_frame[base_frame[group_column].astype(str) == group])
+                    ),
+                    "reason": str(exc),
+                }
+                continue
+
+            color = colors(index % 10)
+            x_values = group_frame[x].to_numpy(dtype=float)
+            y_values = group_frame[y].to_numpy(dtype=float)
+            grid = np.geomspace(x_values.min(), x_values.max(), 200)
+            prediction = 10 ** fit["intercept"] * grid ** fit["slope"]
+            ax.scatter(
+                x_values,
+                y_values,
+                s=16,
+                alpha=0.45,
+                color=color,
+                edgecolors="none",
+            )
+            ax.plot(
+                grid,
+                prediction,
+                color=color,
+                linewidth=2,
+                label=(
+                    f"{group}: N={fit['sample_size']}, "
+                    f"slope={fit['slope']:.3f}, "
+                    f"95% CI=[{fit['slope_ci95'][0]:.3f}, "
+                    f"{fit['slope_ci95'][1]:.3f}]"
+                ),
+            )
+            group_results[group] = {"status": "ok", **fit}
+            plotted_groups.append(group)
+
+        if not plotted_groups:
+            plt.close(fig)
+            raise CatalogError("No group has at least 8 positive data points")
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        axis_labels = {
+            "radius_pc": "Radius (pc)",
+            "velocity_dispersion_kms": "Velocity dispersion (km/s)",
+        }
+        ax.set_xlabel(axis_labels.get(x, x))
+        ax.set_ylabel(axis_labels.get(y, y))
+        ax.set_title(f"Log-log scaling relation by {group_column}")
+        ax.legend()
+        ax.grid(alpha=0.2, which="both")
+        fig.tight_layout()
+
+        filename = (
+            f"grouped_{x}_vs_{y}_by_{group_column}_{uuid.uuid4().hex[:8]}.png"
+        )
+        output_path = self.results_dir / filename
+        fig.savefig(output_path)
+        plt.close(fig)
+        return {
+            "plot_path": str(output_path.resolve()),
+            "x": x,
+            "y": y,
+            "group_column": group_column,
+            "groups": group_results,
+            "plotted_groups": plotted_groups,
+            "filters": filters or {},
+        }

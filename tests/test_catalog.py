@@ -75,3 +75,35 @@ def test_newtrunks_profile_maps_units_and_hierarchy(tmp_path: Path) -> None:
         "non_null_parent_references": 1,
         "parent_references_missing_from_table": 0,
     }
+
+
+def test_grouped_scaling_plot_returns_each_group(tmp_path: Path) -> None:
+    source = tmp_path / "grouped.csv"
+    rows = []
+    structure_id = 1
+    for group, slope in (("loc", 0.4), ("out", 0.6), ("per", 0.8)):
+        for radius in range(1, 11):
+            radius_value = float(radius) / 10
+            rows.append(
+                {
+                    "structure_id": structure_id,
+                    "cloud_id": group,
+                    "radius_pc": radius_value,
+                    "velocity_dispersion_kms": radius_value**slope,
+                    "spiral_arm": group,
+                    "touches_datacube_edge": False,
+                }
+            )
+            structure_id += 1
+    pd.DataFrame(rows).to_csv(source, index=False)
+
+    analyzer = CatalogAnalyzer(source, tmp_path / "results")
+    result = analyzer.plot_grouped_scaling_relation(
+        filters={"touches_datacube_edge": {"eq": False}},
+        bootstrap=30,
+    )
+
+    assert Path(result["plot_path"]).exists()
+    assert result["plotted_groups"] == ["loc", "out", "per"]
+    assert set(result["groups"]) == {"loc", "out", "per"}
+    assert all(result["groups"][group]["sample_size"] == 10 for group in result["groups"])
