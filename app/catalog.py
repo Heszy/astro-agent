@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import uuid
 from pathlib import Path
 from typing import Any
@@ -11,9 +10,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from app.data_profiles import STANDARD_REQUIRED_COLUMNS, normalize_catalog
+from app.fitting import FitError, fit_with_bootstrap, validate_fit_method
 
 REQUIRED_COLUMNS = STANDARD_REQUIRED_COLUMNS
 
@@ -137,39 +136,71 @@ class CatalogAnalyzer:
         y: str,
         filters: dict[str, dict[str, Any]] | None,
         bootstrap: int,
+        fit_method: str = "ols",
+        x_error_column: str | None = None,
+        y_error_column: str | None = None,
     ) -> tuple[pd.DataFrame, dict[str, Any]]:
+        try:
+            method = validate_fit_method(fit_method)
+        except FitError as exc:
+            raise CatalogError(str(exc)) from exc
         for column in (x, y):
             if column not in self.df.columns:
                 raise CatalogError(f"Unknown column: {column}")
-        frame = self._apply_filters(filters)[[x, y]].dropna()
-        frame = frame[(frame[x] > 0) & (frame[y] > 0)]
+        if method == "ols" and (x_error_column or y_error_column):
+            raise CatalogError("Measurement uncertainties can only be used with ODR")
+        error_columns = [
+            column for column in (x_error_column, y_error_column) if column is not None
+        ]
+        for column in error_columns:
+            if column not in self.df.columns:
+                raise CatalogError(f"Unknown uncertainty column: {column}")
+
+        selected_columns = [x, y, *error_columns]
+        frame = self._apply_filters(filters)[selected_columns].copy()
+        for column in selected_columns:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        rows_before = len(frame)
+        valid = frame[x].notna() & frame[y].notna() & (frame[x] > 0) & (frame[y] > 0)
+        for column in error_columns:
+            valid &= frame[column].notna() & (frame[column] > 0)
+        frame = frame.loc[valid]
         if len(frame) < 8:
             raise CatalogError("At least 8 positive data points are required")
 
         log_x = np.log10(frame[x].to_numpy(dtype=float))
         log_y = np.log10(frame[y].to_numpy(dtype=float))
-        result = stats.linregress(log_x, log_y)
-
-        bootstrap = max(0, min(int(bootstrap), 2000))
-        slopes: list[float] = []
-        if bootstrap:
-            rng = np.random.default_rng(20260927)
-            n = len(frame)
-            for _ in range(bootstrap):
-                idx = rng.integers(0, n, n)
-                if np.std(log_x[idx]) == 0:
-                    continue
-                slopes.append(float(stats.linregress(log_x[idx], log_y[idx]).slope))
+        sigma_x = None
+        sigma_y = None
+        if x_error_column:
+            sigma_x = frame[x_error_column].to_numpy(dtype=float) / (
+                frame[x].to_numpy(dtype=float) * np.log(10.0)
+            )
+        if y_error_column:
+            sigma_y = frame[y_error_column].to_numpy(dtype=float) / (
+                frame[y].to_numpy(dtype=float) * np.log(10.0)
+            )
+        try:
+            fit, slopes = fit_with_bootstrap(
+                log_x,
+                log_y,
+                fit_method=method,
+                sigma_x=sigma_x,
+                sigma_y=sigma_y,
+                bootstrap=bootstrap,
+            )
+        except FitError as exc:
+            raise CatalogError(str(exc)) from exc
 
         payload: dict[str, Any] = {
             "x": x,
             "y": y,
+            "fit_method": method,
+            "fit_space": "log10",
             "sample_size": int(len(frame)),
-            "slope": float(result.slope),
-            "intercept": float(result.intercept),
-            "r_value": float(result.rvalue),
-            "p_value": float(result.pvalue),
-            "stderr": float(result.stderr),
+            "rows_dropped_during_preparation": int(rows_before - len(frame)),
+            "uncertainty_columns": {"x": x_error_column, "y": y_error_column},
+            **fit,
             "bootstrap_iterations": int(len(slopes)),
         }
         if slopes:
@@ -185,8 +216,23 @@ class CatalogAnalyzer:
         y: str = "velocity_dispersion_kms",
         filters: dict[str, dict[str, Any]] | None = None,
         bootstrap: int = 300,
+        fit_method: str = "ols",
+        x_error_column: str | None = None,
+        y_error_column: str | None = None,
     ) -> dict[str, Any]:
-        _, payload = self._fit_frame(x, y, filters, bootstrap)
+        _, payload = self._fit_frame(
+            x,
+            y,
+            filters,
+            bootstrap,
+            fit_method,
+            x_error_column,
+            y_error_column,
+        )
+        if fit_method == "odr" and not (x_error_column or y_error_column):
+            payload.setdefault("warnings", []).append(
+                "ODR was run without measurement uncertainties."
+            )
         return payload
 
     def compare_scaling_relations(
@@ -196,13 +242,32 @@ class CatalogAnalyzer:
         group_column: str,
         split_value: float,
         bootstrap: int = 300,
+        fit_method: str = "ols",
+        x_error_column: str | None = None,
+        y_error_column: str | None = None,
     ) -> dict[str, Any]:
         if group_column not in self.df.columns:
             raise CatalogError(f"Unknown group column: {group_column}")
         low_filters = {group_column: {"lt": split_value}}
         high_filters = {group_column: {"ge": split_value}}
-        low = self.fit_scaling_relation(x, y, low_filters, bootstrap)
-        high = self.fit_scaling_relation(x, y, high_filters, bootstrap)
+        low = self.fit_scaling_relation(
+            x,
+            y,
+            low_filters,
+            bootstrap,
+            fit_method,
+            x_error_column,
+            y_error_column,
+        )
+        high = self.fit_scaling_relation(
+            x,
+            y,
+            high_filters,
+            bootstrap,
+            fit_method,
+            x_error_column,
+            y_error_column,
+        )
         return {
             "group_column": group_column,
             "split_value": split_value,
@@ -217,8 +282,19 @@ class CatalogAnalyzer:
         x: str = "radius_pc",
         y: str = "velocity_dispersion_kms",
         filters: dict[str, dict[str, Any]] | None = None,
+        fit_method: str = "ols",
+        x_error_column: str | None = None,
+        y_error_column: str | None = None,
     ) -> dict[str, Any]:
-        frame, fit = self._fit_frame(x, y, filters, bootstrap=0)
+        frame, fit = self._fit_frame(
+            x,
+            y,
+            filters,
+            bootstrap=0,
+            fit_method=fit_method,
+            x_error_column=x_error_column,
+            y_error_column=y_error_column,
+        )
         x_values = frame[x].to_numpy(dtype=float)
         y_values = frame[y].to_numpy(dtype=float)
         grid = np.geomspace(x_values.min(), x_values.max(), 200)
@@ -231,11 +307,14 @@ class CatalogAnalyzer:
         ax.set_yscale("log")
         ax.set_xlabel(x)
         ax.set_ylabel(y)
-        ax.set_title(f"log-log slope = {fit['slope']:.3f}, N = {fit['sample_size']}")
+        ax.set_title(
+            f"{fit['fit_method'].upper()} log-log slope = "
+            f"{fit['slope']:.3f}, N = {fit['sample_size']}"
+        )
         ax.grid(alpha=0.2, which="both")
         fig.tight_layout()
 
-        filename = f"scaling_{uuid.uuid4().hex[:8]}.png"
+        filename = f"scaling_{fit['fit_method']}_{uuid.uuid4().hex[:8]}.png"
         output_path = self.results_dir / filename
         fig.savefig(output_path)
         plt.close(fig)
@@ -249,6 +328,9 @@ class CatalogAnalyzer:
         filters: dict[str, dict[str, Any]] | None = None,
         groups: list[str] | None = None,
         bootstrap: int = 300,
+        fit_method: str = "ols",
+        x_error_column: str | None = None,
+        y_error_column: str | None = None,
     ) -> dict[str, Any]:
         """Fit and plot one log-log relation per categorical group."""
 
@@ -277,7 +359,15 @@ class CatalogAnalyzer:
             group_filters = dict(filters or {})
             group_filters[group_column] = {"eq": group}
             try:
-                group_frame, fit = self._fit_frame(x, y, group_filters, bootstrap)
+                group_frame, fit = self._fit_frame(
+                    x,
+                    y,
+                    group_filters,
+                    bootstrap,
+                    fit_method,
+                    x_error_column,
+                    y_error_column,
+                )
             except CatalogError as exc:
                 group_results[group] = {
                     "status": "skipped",
@@ -301,6 +391,8 @@ class CatalogAnalyzer:
                 color=color,
                 edgecolors="none",
             )
+            ci = fit.get("slope_ci95")
+            ci_text = "" if ci is None else f", 95% CI=[{ci[0]:.3f}, {ci[1]:.3f}]"
             ax.plot(
                 grid,
                 prediction,
@@ -308,9 +400,7 @@ class CatalogAnalyzer:
                 linewidth=2,
                 label=(
                     f"{group}: N={fit['sample_size']}, "
-                    f"slope={fit['slope']:.3f}, "
-                    f"95% CI=[{fit['slope_ci95'][0]:.3f}, "
-                    f"{fit['slope_ci95'][1]:.3f}]"
+                    f"slope={fit['slope']:.3f}{ci_text}"
                 ),
             )
             group_results[group] = {"status": "ok", **fit}
@@ -328,13 +418,16 @@ class CatalogAnalyzer:
         }
         ax.set_xlabel(axis_labels.get(x, x))
         ax.set_ylabel(axis_labels.get(y, y))
-        ax.set_title(f"Log-log scaling relation by {group_column}")
+        ax.set_title(
+            f"{fit_method.upper()} log-log scaling relation by {group_column}"
+        )
         ax.legend()
         ax.grid(alpha=0.2, which="both")
         fig.tight_layout()
 
         filename = (
-            f"grouped_{x}_vs_{y}_by_{group_column}_{uuid.uuid4().hex[:8]}.png"
+            f"grouped_{fit_method}_{x}_vs_{y}_by_{group_column}_"
+            f"{uuid.uuid4().hex[:8]}.png"
         )
         output_path = self.results_dir / filename
         fig.savefig(output_path)
@@ -347,4 +440,11 @@ class CatalogAnalyzer:
             "groups": group_results,
             "plotted_groups": plotted_groups,
             "filters": filters or {},
+            "fit_method": fit_method,
+            "uncertainty_columns": {"x": x_error_column, "y": y_error_column},
+            "warnings": (
+                ["ODR was run without measurement uncertainties."]
+                if fit_method == "odr" and not (x_error_column or y_error_column)
+                else []
+            ),
         }

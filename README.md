@@ -1,6 +1,6 @@
 # AstroAgent
 
-AstroAgent 是一个面向分子云层级结构目录的科学数据分析 Agent。DeepSeek API 负责理解问题和选择工具；数据筛选、统计拟合与绘图由本地 Pandas、SciPy 和 Matplotlib 完成。项目使用 FastAPI 提供接口，并通过自研 Agent harness 管理工具校验、执行、重试、预算与终止。
+AstroAgent 是一个面向分子云层级结构目录的科学数据分析 Agent。DeepSeek API 负责理解问题和选择工具；数据筛选、统计拟合与绘图由本地 Pandas、SciPy、odrpack 和 Matplotlib 完成。项目使用 FastAPI 提供接口，并通过自研 Agent harness 管理工具校验、执行、重试、预算与终止。
 
 ## 系统架构
 
@@ -156,7 +156,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 |---|---|
 | `get_catalog_schema` | 返回行数、字段、类型、物理含义和数据转换记录 |
 | `query_structures` | 使用 `eq`、`ne`、`gt`、`ge`、`lt`、`le`、`in` 筛选目录 |
-| `fit_scaling_relation` | 在 log10 空间拟合两个物理量的幂律关系 |
+| `fit_scaling_relation` | 在 log10 空间使用 OLS 或 ODR 拟合两个物理量的幂律关系 |
 | `compare_scaling_relations` | 按数值阈值拆分样本并比较两组斜率 |
 | `make_plot` | 生成对数坐标散点图和拟合线 PNG |
 | `plot_grouped_scaling_relation` | 按类别分别拟合，并将各组散点和拟合线绘制在同一张 PNG 中 |
@@ -237,7 +237,7 @@ ASTRO_DATA_PATH=data/newtrunks.csv
 
 ## 科学计算方法
 
-标度关系采用 log10 线性回归：
+标度关系统一在 log10–log10 空间中拟合：
 
 ```text
 log10(y) = intercept + slope × log10(x)
@@ -250,14 +250,43 @@ y = 10^intercept × x^slope
 2. 删除拟合字段中的空值。
 3. 删除 `x <= 0` 或 `y <= 0` 的数据，因为其对数无定义。
 4. 要求至少 8 个有效样本。
-5. 使用 `scipy.stats.linregress` 计算斜率、截距、相关系数、p 值和标准误。
-6. 使用固定随机种子的重复有放回抽样，计算斜率的 2.5% 和 97.5% 分位数作为 bootstrap 95% 置信区间。
+5. 默认使用普通最小二乘法（OLS），通过 `scipy.stats.linregress` 计算斜率、截距、相关系数、p 值和标准误。
+6. 用户指定 `fit_method=odr` 时，使用 `odrpack` 执行正交距离回归；如果提供误差列，则在 log 空间中使用对应的一倍标准差进行加权。
+7. 使用固定随机种子的重复有放回抽样，计算斜率的 2.5% 和 97.5% 分位数作为 bootstrap 95% 置信区间。
+
+选择拟合方法的请求示例：
+
+```json
+{
+  "question": "使用ODR正交回归拟合半径与速度弥散的标度关系。"
+}
+```
+
+如果目录包含 `radius_error_pc` 和 `velocity_error_kms` 两个误差列，可以显式指定：
+
+```json
+{
+  "x": "radius_pc",
+  "y": "velocity_dispersion_kms",
+  "fit_method": "odr",
+  "x_error_column": "radius_error_pc",
+  "y_error_column": "velocity_error_kms",
+  "bootstrap": 1000
+}
+```
+
+误差列应是原始线性单位的一倍标准差。程序会近似转换为
+`sigma_log10(x) = sigma_x / (x * ln(10))`。没有误差列时仍可运行无权重 ODR，
+但结果会明确标记为没有使用测量误差。ODR 的结果不提供与 OLS 相同含义的斜率
+p 值，建议主要比较斜率和 bootstrap 置信区间。
 
 默认执行 300 次 bootstrap，工具参数允许的范围为 0–2000 次。固定随机种子用于保证同一数据和参数下结果可复现。
 
 科学解释时需要注意：
 
 - 对数线性拟合描述相关关系，不直接证明因果关系。
+- OLS 假设 x 方向误差可以忽略；ODR 适用于 x、y 都存在误差的情形。
+- 无误差列的 ODR 是无权重正交拟合，不等于已经建模了测量误差。
 - bootstrap 区间不替代完整的系统误差、选择效应或层级相关性分析。
 - 同一分子云内部的父子结构可能不满足独立同分布假设。
 - 比较两组斜率的数值差异不等价于差异具有统计显著性。
