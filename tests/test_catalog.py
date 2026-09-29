@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -107,3 +108,41 @@ def test_grouped_scaling_plot_returns_each_group(tmp_path: Path) -> None:
     assert result["plotted_groups"] == ["loc", "out", "per"]
     assert set(result["groups"]) == {"loc", "out", "per"}
     assert all(result["groups"][group]["sample_size"] == 10 for group in result["groups"])
+
+
+def test_odr_fit_supports_optional_measurement_uncertainties(tmp_path: Path) -> None:
+    source = tmp_path / "odr.csv"
+    radius = np.geomspace(0.1, 10.0, 40)
+    pd.DataFrame(
+        {
+            "structure_id": range(len(radius)),
+            "cloud_id": "cloud",
+            "radius_pc": radius,
+            "velocity_dispersion_kms": 0.7 * radius**0.55,
+            "radius_error_pc": radius * 0.03,
+            "velocity_error_kms": radius**0.55 * 0.02,
+        }
+    ).to_csv(source, index=False)
+
+    analyzer = CatalogAnalyzer(source, tmp_path / "results")
+    result = analyzer.fit_scaling_relation(
+        fit_method="odr",
+        x_error_column="radius_error_pc",
+        y_error_column="velocity_error_kms",
+        bootstrap=20,
+    )
+
+    assert result["fit_method"] == "odr"
+    assert result["sample_size"] == 40
+    assert result["uncertainty_columns"] == {
+        "x": "radius_error_pc",
+        "y": "velocity_error_kms",
+    }
+    assert result["diagnostics"]["weighted"] is True
+    assert result["diagnostics"]["converged"] is True
+    assert len(result["slope_ci95"]) == 2
+
+
+def test_invalid_fit_method_is_rejected(analyzer: CatalogAnalyzer) -> None:
+    with pytest.raises(CatalogError, match="fit_method"):
+        analyzer.fit_scaling_relation(fit_method="robust")
