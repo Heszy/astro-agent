@@ -8,4 +8,6 @@ __pycache__/
 data/*.csv
 results/*.csv
 results/*.png
+dist/
+release-notes.md
 !.gitkeep
